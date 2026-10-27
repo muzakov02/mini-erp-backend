@@ -1,0 +1,299 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CounterpartyType {
+  CUSTOMER
+  SUPPLIER
+  OTHER
+
+  @@map("counterparty_type")
+}
+
+enum DocumentStatus {
+  DRAFT
+  POSTED
+
+  @@map("document_status")
+}
+
+enum UnitType {
+  UNIT
+  BLOCK
+
+  @@map("unit_type")
+}
+
+enum InventoryType {
+  REGULAR
+  OPENING
+
+  @@map("inventory_type")
+}
+
+enum CashDirection {
+  IN
+  OUT
+
+  @@map("cash_direction")
+}
+
+enum CashCategory {
+  SALE_PAYMENT
+  CUSTOMER_DEBT_PAYMENT
+  LOAN_RETURNED
+  LOAN_TAKEN
+  OTHER_INCOME
+  OPENING_BALANCE
+  PURCHASE_PAYMENT
+  SUPPLIER_PAYMENT
+  LOAN_GIVEN
+  LOAN_REPAID
+  EXPENSE_TRANSPORT
+  EXPENSE_RENT
+  EXPENSE_OTHER
+  OWNER_WITHDRAWAL
+
+  @@map("cash_category")
+}
+
+enum StockSource {
+  SALE
+  PURCHASE
+  INVENTORY
+
+  @@map("stock_source")
+}
+
+enum CounterpartySource {
+  SALE
+  PURCHASE
+  CASH
+
+  @@map("counterparty_source")
+}
+
+model Product {
+  id             Int             @id @default(autoincrement())
+  name           String          @unique
+  unitsPerBlock  Int             @map("units_per_block")
+  salePriceUnit  Decimal         @map("sale_price_unit") @db.Decimal(18, 2)
+  salePriceBlock Decimal         @map("sale_price_block") @db.Decimal(18, 2)
+  avgCost        Decimal         @default(0) @map("avg_cost") @db.Decimal(18, 4)
+  isArchived     Boolean         @default(false) @map("is_archived")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  inventoryItems InventoryItem[]
+  stockMovements StockMovement[]
+
+  @@map("products")
+}
+
+model Warehouse {
+  id             Int             @id @default(autoincrement())
+  name           String
+  parentId       Int?            @map("parent_id")
+  isArchived     Boolean         @default(false) @map("is_archived")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  parent         Warehouse?      @relation("WarehouseTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children       Warehouse[]     @relation("WarehouseTree")
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  inventories    Inventory[]
+  stockMovements StockMovement[]
+
+  @@unique([name, parentId])
+  @@map("warehouses")
+}
+
+model Counterparty {
+  id             Int                 @id @default(autoincrement())
+  name           String
+  phone          String?
+  type           CounterpartyType
+  isArchived     Boolean             @default(false) @map("is_archived")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  sales          Sale[]
+  purchases      Purchase[]
+  cashOperations CashOperation[]
+  entries        CounterpartyEntry[]
+
+  @@map("counterparties")
+}
+
+model Sale {
+  id             Int            @id @default(autoincrement())
+  date           DateTime       @db.Date
+  counterpartyId Int?           @map("counterparty_id")
+  status         DocumentStatus @default(DRAFT)
+  totalAmount    Decimal        @map("total_amount") @db.Decimal(18, 2)
+  paidAmount     Decimal        @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  totalCost      Decimal?       @map("total_cost") @db.Decimal(18, 2)
+  postedAt       DateTime?      @map("posted_at")
+  note           String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  counterparty   Counterparty?  @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  items          SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id          Int       @id @default(autoincrement())
+  saleId      Int       @map("sale_id")
+  productId   Int       @map("product_id")
+  warehouseId Int       @map("warehouse_id")
+  unitType    UnitType  @map("unit_type")
+  quantity    Int
+  price       Decimal   @db.Decimal(18, 2)
+  amount      Decimal   @db.Decimal(18, 2)
+  qtyInUnits  Int       @map("qty_in_units")
+  unitCost    Decimal?  @map("unit_cost") @db.Decimal(18, 4)
+  costAmount  Decimal?  @map("cost_amount") @db.Decimal(18, 2)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@map("sale_items")
+}
+
+model Purchase {
+  id             Int            @id @default(autoincrement())
+  date           DateTime       @db.Date
+  counterpartyId Int?           @map("counterparty_id")
+  status         DocumentStatus @default(DRAFT)
+  totalAmount    Decimal        @map("total_amount") @db.Decimal(18, 2)
+  paidAmount     Decimal        @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  postedAt       DateTime?      @map("posted_at")
+  note           String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  counterparty   Counterparty?  @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  items          PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          Int       @id @default(autoincrement())
+  purchaseId  Int       @map("purchase_id")
+  productId   Int       @map("product_id")
+  warehouseId Int       @map("warehouse_id")
+  unitType    UnitType  @map("unit_type")
+  quantity    Int
+  price       Decimal   @db.Decimal(18, 2)
+  amount      Decimal   @db.Decimal(18, 2)
+  qtyInUnits  Int       @map("qty_in_units")
+  unitCost    Decimal   @map("unit_cost") @db.Decimal(18, 4)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  purchase    Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@map("purchase_items")
+}
+
+model Inventory {
+  id              Int             @id @default(autoincrement())
+  date            DateTime        @db.Date
+  type            InventoryType
+  warehouseId     Int             @map("warehouse_id")
+  status          DocumentStatus  @default(DRAFT)
+  postedAt        DateTime?       @map("posted_at")
+  totalDiffAmount Decimal?        @map("total_diff_amount") @db.Decimal(18, 2)
+  note            String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  items           InventoryItem[]
+
+  @@map("inventories")
+}
+
+model InventoryItem {
+  id          Int       @id @default(autoincrement())
+  inventoryId Int       @map("inventory_id")
+  productId   Int       @map("product_id")
+  countedQty  Int       @map("counted_qty")
+  expectedQty Int?      @map("expected_qty")
+  diffQty     Int?      @map("diff_qty")
+  unitCost    Decimal?  @map("unit_cost") @db.Decimal(18, 4)
+  diffAmount  Decimal?  @map("diff_amount") @db.Decimal(18, 2)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([inventoryId, productId])
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id          Int         @id @default(autoincrement())
+  productId   Int         @map("product_id")
+  warehouseId Int         @map("warehouse_id")
+  quantity    Int
+  unitCost    Decimal     @map("unit_cost") @db.Decimal(18, 4)
+  sourceType  StockSource @map("source_type")
+  sourceId    Int         @map("source_id")
+  date        DateTime    @db.Date
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse   @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([productId, warehouseId])
+  @@index([date])
+  @@map("stock_movements")
+}
+
+model CashOperation {
+  id             Int                 @id @default(autoincrement())
+  date           DateTime            @db.Date
+  direction      CashDirection
+  category       CashCategory
+  amount         Decimal             @db.Decimal(18, 2)
+  counterpartyId Int?                @map("counterparty_id")
+  sourceType     CounterpartySource? @map("source_type")
+  sourceId       Int?                @map("source_id")
+  note           String?
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  counterparty   Counterparty?       @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+
+  @@index([date])
+  @@index([category])
+  @@map("cash_operations")
+}
+
+model CounterpartyEntry {
+  id             Int                @id @default(autoincrement())
+  counterpartyId Int                @map("counterparty_id")
+  amount         Decimal            @db.Decimal(18, 2)
+  sourceType     CounterpartySource @map("source_type")
+  sourceId       Int                @map("source_id")
+  date           DateTime           @db.Date
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  counterparty   Counterparty       @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+
+  @@index([counterpartyId])
+  @@map("counterparty_entries")
+}
